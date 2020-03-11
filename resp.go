@@ -29,46 +29,46 @@ var terminatorBytes = []byte(terminator)
 
 const maxBulkStringLength = 512 << 20
 
-// lex parses the next RESP token from a stream. An error is returned if the
-// input is unparseable. If the input is an incomplete token, then lex returns
-// ("", s, nil).
+// lex parses the next RESP token from a stream, returning the token's length.
+// An error is returned if the input is unparseable. If the input is an
+// incomplete token, then lex returns (0, nil).
 //
 // Array headers are treated as their own token and do not include the rest of
 // the array.
-func lex(s []byte) (tok string, rest []byte, err error) {
+func lex(s []byte) (int, error) {
 	if len(s) == 0 {
-		return "", s, nil
+		return 0, nil
 	}
 	i := bytes.Index(s, terminatorBytes)
 	switch s[0] {
 	case '+', '-', ':', '*':
 		if i == -1 {
-			return "", s, nil
+			return 0, nil
 		}
-		return string(s[:i+len(terminator)]), s[i+len(terminator):], nil
+		return i + len(terminator), nil
 	case '$': // Bulk string
 		if i == -1 {
-			return "", s, nil
+			return 0, nil
 		}
 		bulkLength, err := strconv.ParseInt(string(s[1:i]), 10, 32)
 		if err != nil {
-			return "", s, xerrors.Errorf("parse RESP: bad bulk string length: %w", err)
+			return 0, xerrors.Errorf("parse RESP: bad bulk string length: %w", err)
 		}
 		if bulkLength < -1 || bulkLength > maxBulkStringLength {
-			return "", s, xerrors.Errorf("parse RESP: invalid bulk string length %d", bulkLength)
+			return 0, xerrors.Errorf("parse RESP: invalid bulk string length %d", bulkLength)
 		}
 		if bulkLength == -1 {
-			return string(s[:i+len(terminator)]), s[i+len(terminator):], nil
+			return i + len(terminator), nil
 		}
 		stringEnd := i + len(terminator) + int(bulkLength)
 		if len(s) < stringEnd+len(terminator) {
-			return "", s, nil
+			return 0, nil
 		}
 		if !bytes.HasPrefix(s[stringEnd:], terminatorBytes) {
-			return "", s, xerrors.New("parse RESP: unterminated bulk string")
+			return 0, xerrors.New("parse RESP: unterminated bulk string")
 		}
-		return string(s[:stringEnd+len(terminator)]), s[stringEnd+len(terminator):], nil
+		return stringEnd + len(terminator), nil
 	default:
-		return "", s, xerrors.Errorf("parse RESP: invalid tag %q", s[0])
+		return 0, xerrors.Errorf("parse RESP: invalid tag %q", s[0])
 	}
 }

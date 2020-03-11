@@ -16,17 +16,19 @@
 
 package redis
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLex(t *testing.T) {
 	tests := []struct {
-		s    string
-		tok  string
-		rest string
-		err  bool
+		s   string
+		tok string
+		err bool
 	}{
-		{s: "", tok: "", rest: ""},
-		{s: "foo", rest: "foo", err: true},
+		{s: "", tok: ""},
+		{s: "foo", err: true},
 		{s: "+OK\r\n", tok: "+OK\r\n"},
 		{s: "-Error message\r\n", tok: "-Error message\r\n"},
 		{s: ":0\r\n", tok: ":0\r\n"},
@@ -34,21 +36,29 @@ func TestLex(t *testing.T) {
 		{s: "$6\r\nfoobar\r\n", tok: "$6\r\nfoobar\r\n"},
 		{s: "$0\r\n\r\n", tok: "$0\r\n\r\n"},
 		{s: "$-1\r\n", tok: "$-1\r\n"},
-		{s: "$-2\r\n", rest: "$-2\r\n", err: true},
-		{s: "$-1\r\n+OK\r\n", tok: "$-1\r\n", rest: "+OK\r\n"},
+		{s: "$-2\r\n", err: true},
+		{s: "$-1\r\n+OK\r\n", tok: "$-1\r\n"},
 		{s: "*0\r\n", tok: "*0\r\n"},
-		{s: "*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n", tok: "*2\r\n", rest: "$3\r\nfoo\r\n$3\r\nbar\r\n"},
+		{s: "*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n", tok: "*2\r\n"},
 		{s: "*-1\r\n", tok: "*-1\r\n"},
-		{s: "$-1\r\n+OK\r\n", tok: "$-1\r\n", rest: "+OK\r\n"},
+		{s: "$-1\r\n+OK\r\n", tok: "$-1\r\n"},
 	}
 	for _, test := range tests {
-		tok, rest, err := lex([]byte(test.s))
-		if tok != test.tok || string(rest) != test.rest || (err != nil) != test.err {
+		if !strings.HasPrefix(test.s, test.tok) {
+			t.Errorf("Test for %q has invalid token %q. Skipping.", test.s, test.tok)
+			continue
+		}
+		got, err := lex([]byte(test.s))
+		if want := len(test.tok); got != want || (err != nil) != test.err {
 			wantErr := "<nil>"
 			if test.err {
 				wantErr = "<some error>"
 			}
-			t.Errorf("lex(%q) = %q, %q, %v; want %q, %q, %s", test.s, tok, rest, err, test.tok, test.rest, wantErr)
+			if got < len(test.s) {
+				t.Errorf("lex(%q) = %d (%q), %v; want %d (%q), %s", test.s, got, test.s[:got], err, want, test.tok, wantErr)
+			} else {
+				t.Errorf("lex(%q) = %d, %v; want %d (%q), %s", test.s, got, err, want, test.tok, wantErr)
+			}
 		}
 	}
 }
